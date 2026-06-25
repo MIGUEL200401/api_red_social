@@ -1,114 +1,109 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { InjectModel } from "@nestjs/mongoose";
-import {User,UserDocument} from './schemas/user.schema';
+import { User, UserDocument } from "./schemas/user.schema";
 import { Model } from 'mongoose';
 import { CreateUserDto } from "./dto/create-user.dto";
-import * as bcrypt from 'bcrypt';
-import { ResponseHelper } from "src/common/helpers/response.helper";
 import { SearchUserDto } from "./dto/search-user.dto";
+import { ResponseHelper } from 'src/common/helpers/response.helper';
+import * as bcrypt from 'bcrypt';
 import { UpdateUserDto } from "./dto/update-user.dto";
-
+import { dot } from "node:test/reporters";
 
 @Injectable()
-export class UsuariosService{
+export class UsuariosService {
     constructor(
         @InjectModel(User.name)
-        private readonly userModel:
-        Model<UserDocument>
-    ){}
+        private readonly userModel: Model<UserDocument>,
+    ) {}
 
-/**
- * Motodo para la creacion de usuario
- */
-async create(dto: CreateUserDto){
+    /**
+     * Metodo para la creacion de usuarios
+     */
+    async create(dto: CreateUserDto) {
+        const exists = await this.userModel.findOne({ correo: dto.correo });
 
-        /**Verificacion de correo */
-        const exists= await this.userModel.findOne({correo:dto.correo})
-
-        /** si existe correo */
-        if(exists){
-            throw new BadRequestException('Correo ya registrado')
+        if (exists) {
+            throw new BadRequestException('Correo ya registrado');
         }
 
-        const hashePassword = await bcrypt.hash(dto.password, 10);
+        const hashedPassword = await bcrypt.hash(dto.password, 10);
 
-        const user = await this.userModel.create({...dto,password:hashePassword});
+        const user = await this.userModel.create({
+            ...dto,
+            password: hashedPassword,
+        });
 
-        return ResponseHelper.succes(user,201);
+        return ResponseHelper.succes(user, 201);
     }
 
     /**
-     * Consulta usuario
+     * consulta usuario
      */
-    async findAll(search:SearchUserDto){
-        //  Crear filtro
-        const filter: any={activo:true};
+    async findAll(search: SearchUserDto) {
+        const filter: any = { activo: true };
 
-        // Filtro por nombre
-
-        if(search.nombre){
-            filter.nombre={
-                $regex:search.nombre,
-                $options:'i'
+        if (search.nombre) {
+            filter.nombre = {
+                $regex: search.nombre,
+                $options: 'i',
             };
         }
 
-        const page= Number(search.page) || 1;
+        const page = Number(search.page) || 1;
         const limit = Number(search.limit) || 10;
         
-        //Consulta
-
-        const data = await this.userModel.find(filter).populate('rol_id').skip((page-1)*limit).limit(limit);
-        //Contador de documentos= contador de usuarios 
+        // CORREGIDO: Se usa 'role' para que coincida con tu Schema
+        const data = await this.userModel.find(filter).populate('role').skip((page - 1) * limit).limit(limit);
+        
+        // Contador de documentos = contador de usuarios 
         const total = await this.userModel.countDocuments(filter);
 
-        return ResponseHelper.succes( {total, page, limit, data});
+        return ResponseHelper.succes({ total, page, limit, data });
     }
 
     /**
-     * consulta por id de usuario
+     * consulta por id usuario
      */
+    async findOne(id: string) {
 
-    async findOne(id:string){
-        const user = await this.userModel.findById(id).populate('rol_id');
-
-        if(!user){
-        throw new NotFoundException('Usuario no encontrado')
+        const user = await this.userModel.findById(id).populate('role');
+        if (!user) {
+            throw new BadRequestException('Usuario no encontrado');
         }
-    
-        return ResponseHelper.succes(user)
+        return ResponseHelper.succes(user);
     }
 
     /**
-     * Actualizacion de horario  
+     * Actualizacion de usuario
      */
+    async update(id: string, dto: UpdateUserDto) {
+        const user = await this.userModel.findById(id);
 
-    async update(id:string, dto:UpdateUserDto){
-        const user = await this.userModel.findById(id)
-
-        if(!user){
-            throw new NotFoundException('No se encontro el usuario')
+        if (!user) {
+            throw new NotFoundException('No se encontro el Usuario');
         }
 
-        const updateuser = await this.userModel.findByIdAndUpdate(id, dto,{new:true})
+        if (dto.password) {
+            dto.password = await bcrypt.hash(dto.password, 10);
+        }
 
-        return ResponseHelper.succes(updateuser)
+        const updatedUser = await this.userModel.findByIdAndUpdate(id, dto, { new: true });
 
+        return ResponseHelper.succes(updatedUser);
     }
 
     /**
-     * Soft delete
+     * Soft delete 
      */
-    async remove(id:string){
-        const user= await this.userModel.findById(id)
+    async remove(id: string) {
+        const user = await this.userModel.findById(id);
 
-        if(!user){
-            throw new NotFoundException('Usuario no encontrado')
+        if (!user) {
+            throw new NotFoundException('Usuario no Encontrado');
         }
 
-        const deleteUser = await this.userModel.findByIdAndUpdate(id,{activo:false});
+        const deletedUser = await this.userModel.findByIdAndUpdate(id, { activo: false });
 
-        return ResponseHelper.succes(deleteUser);
+        return ResponseHelper.succes(deletedUser);
     }
 }
